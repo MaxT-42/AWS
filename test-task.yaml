@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+
+  DomainName:
+    Type: String
+    Description: The DNS name of an existing Amazon Route 53 hosted zone
+
+  BucketName:
+    Type: String
+    Description: Amazon S3 files bucket name
+
+  HostedZoneId:
+    Type: String
+    Description: Amazon Route53 Hosted Zone Id for DomainName
+
+  CertificateArn:
+    Type: String
+    Description: Certificate Link
+
+Resources:
+# create Bucket
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      BucketName:
+        Ref: BucketName
+      Tags:
+      - Key: description
+        Value: "bucket for test task"
+# create Policy
+  cloudfrontoriginaccessidentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: 'Origin Access Identity'
+# update bucket Policy
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: BucketName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${cloudfrontoriginaccessidentity}'
+            Action: 's3:GetObject'
+            Resource: !Sub "arn:aws:s3:::${BucketName}/*"
+# create CloudFront
+  cloudfrontdistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !Sub "${BucketName}.s3.us-east-2.amazonaws.com"
+            Id: !Sub "S3-${BucketName}"
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub 'origin-access-identity/cloudfront/${cloudfrontoriginaccessidentity}'
+        Enabled: 'true'
+        Comment: CloudFront for test task
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+          TargetOriginId: !Sub "S3-${BucketName}"
+          ForwardedValues:
+            QueryString: 'false'
+            Cookies:
+              Forward: none
+          ViewerProtocolPolicy: https-only
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: 'true'
+#          AcmCertificateArn: !Ref CertificateArn
+#          MinimumProtocolVersion: TLSv1
+#          SslSupportMethod: sni-only
+
+# create A records in Route53
+#    myDNSRecord:
+#      Type: AWS::Route53::RecordSet
+#      Properties:
+#        HostedZoneId: !Ref HostedZoneId
+#        Name: !Ref DomainName
+#        ResourceRecords:
+#        - ip address DomainName hosting
+#        TTL: 900
+#        Type: A
